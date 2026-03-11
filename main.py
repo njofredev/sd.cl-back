@@ -772,6 +772,141 @@ def exportar_motivos_csv(
         headers={"Content-Disposition": f"attachment; filename=distribucion_motivos.csv"}
     )
 
+@api_router.get("/api/reportes/preview/{tipo_reporte}", tags=["Reportes"], summary="Vista previa JSON de reportes")
+def get_reporte_preview(
+    tipo_reporte: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    sede: str | None = None,
+    profesional: str | None = None,
+    conn=Depends(get_db)
+):
+    params = []
+    
+    if tipo_reporte == "atenciones":
+        query = """
+            SELECT 
+                TO_CHAR(l.fecha_registro AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santiago', 'YYYY-MM-DD HH24:MI') as "Fecha",
+                r.sede as "Sede",
+                l.nombre_especialista as "Profesional",
+                l.motivo_consulta as "Motivo Consulta",
+                'Atendida' as "Estado",
+                SUBSTRING(r.nombre_completo, 1, 3) || '***' as "Paciente (Anon.)"
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+            WHERE 1=1
+        """
+        if start_date:
+            query += " AND l.fecha_registro >= %s::date"
+            params.append(start_date)
+        if end_date:
+            query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+            params.append(end_date)
+        if sede and sede != 'todas':
+            query += " AND r.sede = %s"
+            params.append(sede)
+        if profesional and profesional != 'todos':
+            query += " AND l.nombre_especialista ILIKE %s"
+            params.append(f"%{profesional}%")
+        query += " ORDER BY l.fecha_registro DESC LIMIT 20"
+        
+    elif tipo_reporte == "pacientes":
+        query = """
+            SELECT 
+                r.sede as "Sede",
+                SUBSTRING(r.nombre_completo, 1, 3) || '***' as "Paciente (Anon.)",
+                r.reservas_realizadas as "Sesiones Consumidas",
+                TO_CHAR((SELECT MAX(fecha_registro) FROM logs_atenciones WHERE rut_paciente = r.rut), 'YYYY-MM-DD') as "Última Cita Registrada"
+            FROM registros_usuarios r
+            WHERE 1=1
+        """
+        if sede and sede != 'todas':
+            query += " AND r.sede = %s"
+            params.append(sede)
+        query += " ORDER BY r.sede, r.nombre_completo ASC LIMIT 20"
+        
+    elif tipo_reporte == "especialistas":
+        query = """
+            SELECT 
+                l.nombre_especialista as "Especialista",
+                r.sede as "Sede Principal",
+                COUNT(*) as "Total Citas Atendidas",
+                COUNT(DISTINCT l.rut_paciente) as "Pacientes Únicos Atendidos"
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+            WHERE 1=1
+        """
+        if start_date:
+            query += " AND l.fecha_registro >= %s::date"
+            params.append(start_date)
+        if end_date:
+            query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+            params.append(end_date)
+        if sede and sede != 'todas':
+            query += " AND r.sede = %s"
+            params.append(sede)
+        if profesional and profesional != 'todos':
+            query += " AND l.nombre_especialista ILIKE %s"
+            params.append(f"%{profesional}%")
+        query += " GROUP BY l.nombre_especialista, r.sede ORDER BY \"Total Citas Atendidas\" DESC LIMIT 20"
+        
+    elif tipo_reporte == "motivos":
+        query = """
+            SELECT 
+                COALESCE(l.motivo_consulta, 'Sin Motivo / No Especificado') as "Motivo de Consulta Clínico",
+                COUNT(*) as "Cantidad de Casos",
+                ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM logs_atenciones la JOIN registros_usuarios ru ON la.rut_paciente=ru.rut WHERE 1=1"""
+        
+        params_total = []
+        if start_date:
+            query += " AND la.fecha_registro >= %s::date"
+            params_total.append(start_date)
+        if end_date:
+            query += " AND la.fecha_registro <= %s::date + interval '1 day'"
+            params_total.append(end_date)
+        if sede and sede != 'todas':
+            query += " AND ru.sede = %s"
+            params_total.append(sede)
+        if profesional and profesional != 'todos':
+            query += " AND la.nombre_especialista ILIKE %s"
+            params_total.append(f"%{profesional}%")
+            
+        query += """), 0), 2) as "Incidencia (%)"
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+            WHERE 1=1
+        """
+        if start_date:
+            query += " AND l.fecha_registro >= %s::date"
+            params.append(start_date)
+        if end_date:
+            query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+            params.append(end_date)
+        if sede and sede != 'todas':
+            query += " AND r.sede = %s"
+            params.append(sede)
+        if profesional and profesional != 'todos':
+            query += " AND l.nombre_especialista ILIKE %s"
+            params.append(f"%{profesional}%")
+            
+        query += " GROUP BY l.motivo_consulta ORDER BY \"Cantidad de Casos\" DESC LIMIT 20"
+        params = params_total + params
+    else:
+        raise HTTPException(status_code=400, detail="Tipo de reporte inválido")
+
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        
+    if not rows:
+        return {"columns": [], "data": []}
+            
+    columns = list(rows[0].keys())
+    return {
+        "columns": columns,
+        "data": rows
+    }
+
 
 class PacienteCreate(BaseModel):
     rut: str
