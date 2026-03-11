@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Security, APIRouter
 from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,8 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 import requests
+import csv
+from io import StringIO
 
 load_dotenv()
 
@@ -490,6 +493,111 @@ def get_dashboard_pacientes(sede: str | None = None, conn = Depends(get_db)):
         cur.execute(query, tuple(params))
         pacientes = cur.fetchall()
     return pacientes
+
+
+# --- REPORTES Y ESTADÍSTICAS ---
+
+@api_router.get("/api/reportes/resumen", tags=["Reportes"], summary="Resumen analítico filtrado")
+def get_reportes_resumen(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    sede: str | None = None,
+    profesional: str | None = None,
+    estado: str | None = None,
+    conn=Depends(get_db)
+):
+    query = """
+        SELECT 
+            COUNT(*) as total_citas,
+            COUNT(DISTINCT l.rut_paciente) as pacientes_unicos,
+            COUNT(CASE WHEN l.motivo_consulta IS NOT NULL THEN 1 END) as asistencias
+        FROM logs_atenciones l
+        JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        WHERE 1=1
+    """
+    params = []
+    
+    if start_date:
+        query += " AND l.fecha_registro >= %s::date"
+        params.append(start_date)
+    if end_date:
+        query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+        params.append(end_date)
+    if sede and sede != 'todas':
+        query += " AND r.sede = %s"
+        params.append(sede)
+    if profesional and profesional != 'todos':
+        query += " AND l.nombre_especialista ILIKE %s"
+        params.append(f"%{profesional}%")
+        
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, tuple(params))
+        resumen = cur.fetchone()
+        
+    return resumen or {}
+
+@api_router.get("/api/reportes/exportar/atenciones", tags=["Reportes"], summary="Exportar atenciones a CSV")
+def exportar_atenciones_csv(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    sede: str | None = None,
+    profesional: str | None = None,
+    conn=Depends(get_db)
+):
+    query = """
+        SELECT 
+            l.fecha_registro AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santiago' as fecha,
+            r.sede,
+            l.nombre_especialista,
+            l.motivo_consulta,
+            'Atendida' as estado,
+            SUBSTRING(r.nombre_completo, 1, 3) || '***' as paciente_anonimo
+        FROM logs_atenciones l
+        JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        WHERE 1=1
+    """
+    params = []
+    if start_date:
+        query += " AND l.fecha_registro >= %s::date"
+        params.append(start_date)
+    if end_date:
+        query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+        params.append(end_date)
+    if sede and sede != 'todas':
+        query += " AND r.sede = %s"
+        params.append(sede)
+    if profesional and profesional != 'todos':
+        query += " AND l.nombre_especialista ILIKE %s"
+        params.append(f"%{profesional}%")
+        
+    query += " ORDER BY l.fecha_registro DESC"
+    
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Fecha', 'Sede', 'Profesional', 'Motivo Consulta', 'Estado', 'Paciente (Anon.)'])
+    
+    for row in rows:
+        fecha_str = row['fecha'].strftime('%Y-%m-%d %H:%M') if row['fecha'] else ''
+        writer.writerow([
+            fecha_str,
+            row['sede'],
+            row['nombre_especialista'],
+            row['motivo_consulta'],
+            row['estado'],
+            row['paciente_anonimo']
+        ])
+        
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=reporte_atenciones.csv"}
+    )
+
 
 class PacienteCreate(BaseModel):
     rut: str
