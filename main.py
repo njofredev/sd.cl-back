@@ -851,27 +851,31 @@ def get_reporte_preview(
         query += " GROUP BY l.nombre_especialista, r.sede ORDER BY \"Total Citas Atendidas\" DESC LIMIT 20"
         
     elif tipo_reporte == "motivos":
+        # Calculate total count first for percentage
+        total_query = "SELECT COUNT(*) FROM logs_atenciones la JOIN registros_usuarios ru ON la.rut_paciente = ru.rut WHERE 1=1"
+        total_params = []
+        if start_date:
+            total_query += " AND la.fecha_registro >= %s::date"
+            total_params.append(start_date)
+        if end_date:
+            total_query += " AND la.fecha_registro <= %s::date + interval '1 day'"
+            total_params.append(end_date)
+        if sede and sede != 'todas':
+            total_query += " AND ru.sede = %s"
+            total_params.append(sede)
+        if profesional and profesional != 'todos':
+            total_query += " AND la.nombre_especialista ILIKE %s"
+            total_params.append(f"%{profesional}%")
+            
+        with conn.cursor() as t_cur:
+            t_cur.execute(total_query, tuple(total_params))
+            total_res = t_cur.fetchone()
+            total_count = total_res[0] if total_res else 0
+
         query = """
             SELECT 
                 COALESCE(l.motivo_consulta, 'Sin Motivo / No Especificado') as "Motivo de Consulta Clínico",
-                COUNT(*) as "Cantidad de Casos",
-                ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM logs_atenciones la JOIN registros_usuarios ru ON la.rut_paciente=ru.rut WHERE 1=1"""
-        
-        params_total = []
-        if start_date:
-            query += " AND la.fecha_registro >= %s::date"
-            params_total.append(start_date)
-        if end_date:
-            query += " AND la.fecha_registro <= %s::date + interval '1 day'"
-            params_total.append(end_date)
-        if sede and sede != 'todas':
-            query += " AND ru.sede = %s"
-            params_total.append(sede)
-        if profesional and profesional != 'todos':
-            query += " AND la.nombre_especialista ILIKE %s"
-            params_total.append(f"%{profesional}%")
-            
-        query += """), 0), 2)::float as "Incidencia (%%)"
+                COUNT(*) as "Cantidad de Casos"
             FROM logs_atenciones l
             JOIN registros_usuarios r ON l.rut_paciente = r.rut
             WHERE 1=1
@@ -890,7 +894,18 @@ def get_reporte_preview(
             params.append(f"%{profesional}%")
             
         query += " GROUP BY l.motivo_consulta ORDER BY \"Cantidad de Casos\" DESC LIMIT 20"
-        params = params_total + params
+        
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            
+        # Add incidence in Python
+        for row in rows:
+            row["Incidencia (%)"] = round((row["Cantidad de Casos"] * 100.0 / total_count), 2) if total_count > 0 else 0
+            
+        # Early return to skip generic logic
+        if not rows: return {"columns": [], "data": []}
+        return {"columns": list(rows[0].keys()), "data": rows}
     else:
         raise HTTPException(status_code=400, detail="Tipo de reporte inválido")
 
