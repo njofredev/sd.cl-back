@@ -355,45 +355,139 @@ def login_institucion(req: LoginInstitucionRequest, conn = Depends(get_db)):
     }
 
 @api_router.get("/api/dashboard/kpis", tags=["Dashboard"], summary="Métricas principales (KPIs)")
-def get_dashboard_kpis(conn = Depends(get_db)):
-    """Obtiene los KPIs para el dashboard."""
-    with conn.cursor() as cur:
-        cur.execute("SELECT COUNT(*), SUM(reservas_realizadas) FROM registros_usuarios")
-        row = cur.fetchone()
-        total_pacs = row[0] if row else 0
-        total_res_uso = row[1] if row else 0
+def get_dashboard_kpis(sede: str | None = None, conn = Depends(get_db)):
+    """Obtiene los KPIs y datos de gráficos para el dashboard."""
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        # 1. Total Pacientes y Sesiones
+        query_pacs = "SELECT COUNT(*) as total_pacs, COALESCE(SUM(reservas_realizadas), 0) as total_res FROM registros_usuarios"
+        params_pacs = []
+        if sede and sede != 'todas':
+            query_pacs += " WHERE sede = %s"
+            params_pacs.append(sede)
+            
+        cur.execute(query_pacs, tuple(params_pacs))
+        row_pacs = cur.fetchone()
+        total_pacs = row_pacs['total_pacs'] if row_pacs else 0
+        total_res_uso = row_pacs['total_res'] if row_pacs else 0
         
-        cur.execute("SELECT COUNT(*) FROM logs_atenciones")
-        total_atenciones = cur.fetchone()[0]
+        # 2. Total Atenciones
+        query_logs = """
+            SELECT COUNT(*) as total_atenciones 
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        """
+        params_logs = []
+        if sede and sede != 'todas':
+            query_logs += " WHERE r.sede = %s"
+            params_logs.append(sede)
+            
+        cur.execute(query_logs, tuple(params_logs))
+        total_atenciones = cur.fetchone()['total_atenciones']
         
-    # Variables dummy para los KPIs
+        # 3. Gráfico Semanal (últimos 7 días)
+        hoy = datetime.now().date()
+        fechas = [(hoy - timedelta(days=i)).isoformat() for i in range(6, -1, -1)]
+        labels_dias = [(hoy - timedelta(days=i)).strftime('%a') for i in range(6, -1, -1)]
+        chart_bar_data = [0] * 7
+        
+        query_bar = """
+            SELECT l.fecha_registro::date as dia, COUNT(*) as count
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+            WHERE l.fecha_registro >= NOW() - INTERVAL '7 days'
+        """
+        if sede and sede != 'todas':
+            query_bar += " AND r.sede = %s"
+            
+        query_bar += " GROUP BY dia"
+        cur.execute(query_bar, tuple(params_logs))
+        
+        dias_db = cur.fetchall()
+        for d in dias_db:
+            dia_str = d['dia'].isoformat() if hasattr(d['dia'], 'isoformat') else str(d['dia'])
+            if dia_str in fechas:
+                chart_bar_data[fechas.index(dia_str)] = d['count']
+                
+        # 4. Gráfico Dona (Tipos de Atención / Motivo)
+        query_donut = """
+            SELECT l.motivo_consulta, COUNT(*) as count
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        """
+        if sede and sede != 'todas':
+            query_donut += " WHERE r.sede = %s"
+        query_donut += " GROUP BY l.motivo_consulta"
+        
+        cur.execute(query_donut, tuple(params_logs))
+        motivos_db = cur.fetchall()
+        doughnut_labels = []
+        doughnut_data = []
+        for m in motivos_db:
+            doughnut_labels.append(m['motivo_consulta'])
+            doughnut_data.append(m['count'])
+            
+        # 5. Citas Recientes
+        query_citas = """
+            SELECT l.id, l.rut_paciente, l.nombre_especialista, l.motivo_consulta,
+                   l.fecha_registro AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santiago' as fecha_registro,
+                   r.nombre_completo as paciente_nombre, r.sede
+            FROM logs_atenciones l
+            JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        """
+        if sede and sede != 'todas':
+            query_citas += " WHERE r.sede = %s"
+        query_citas += " ORDER BY l.fecha_registro DESC LIMIT 5"
+        
+        cur.execute(query_citas, tuple(params_logs))
+        citas_recientes = cur.fetchall()
+        
     bolsa_total = 1500
     restantes = bolsa_total - total_res_uso
     
     return {
-        "pacientes_activos": total_pacs,
-        "pacientes_nuevos": 14,
-        "sesiones_totales_mes": total_res_uso,
-        "bolsa_restante": restantes,
-        "bolsa_total": bolsa_total,
-        "porcentaje_asistencia": 85,
-        "ausencias": 12,
-        "total_atenciones_pasadas": total_atenciones
+        "kpis": {
+            "pacientes_activos": total_pacs,
+            "sesiones_totales_mes": total_res_uso,
+            "bolsa_restante": restantes,
+            "bolsa_total": bolsa_total,
+            "porcentaje_asistencia": 100, 
+            "ausencias": 0,
+            "total_atenciones_pasadas": total_atenciones
+        },
+        "charts": {
+            "bar": {
+                "labels": labels_dias,
+                "data": chart_bar_data
+            },
+            "doughnut": {
+                "labels": doughnut_labels if doughnut_labels else ["Sin Datos"],
+                "data": doughnut_data if doughnut_data else [1]
+            }
+        },
+        "citas_recientes": citas_recientes
     }
 
 @api_router.get("/api/dashboard/pacientes", tags=["Dashboard"], summary="Lista de Pacientes activos")
-def get_dashboard_pacientes(conn = Depends(get_db)):
+def get_dashboard_pacientes(sede: str | None = None, conn = Depends(get_db)):
     """Devuelve la lista de pacientes registrados."""
+    query = """
+        SELECT 
+            r.rut, 
+            r.nombre_completo, 
+            r.sede, 
+            r.reservas_realizadas,
+            (SELECT MAX(fecha_registro) FROM logs_atenciones WHERE rut_paciente = r.rut) as ultima_cita
+        FROM registros_usuarios r
+    """
+    params = []
+    if sede and sede != 'todas':
+        query += " WHERE r.sede = %s"
+        params.append(sede)
+        
+    query += " ORDER BY r.nombre_completo ASC"
+
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
-        cur.execute("""
-            SELECT 
-                r.rut, 
-                r.nombre_completo, 
-                r.sede, 
-                r.reservas_realizadas,
-                (SELECT MAX(fecha_registro) FROM logs_atenciones WHERE rut_paciente = r.rut) as ultima_cita
-            FROM registros_usuarios r
-        """)
+        cur.execute(query, tuple(params))
         pacientes = cur.fetchall()
     return pacientes
 
