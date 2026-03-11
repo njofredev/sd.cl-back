@@ -598,6 +598,180 @@ def exportar_atenciones_csv(
         headers={"Content-Disposition": f"attachment; filename=reporte_atenciones.csv"}
     )
 
+@api_router.get("/api/reportes/exportar/pacientes", tags=["Reportes"], summary="Exportar padrón de pacientes a CSV")
+def exportar_pacientes_csv(
+    sede: str | None = None,
+    conn=Depends(get_db)
+):
+    query = """
+        SELECT 
+            r.sede,
+            SUBSTRING(r.nombre_completo, 1, 3) || '***' as paciente_anonimo,
+            r.reservas_realizadas as sesiones_ocupadas,
+            (SELECT MAX(fecha_registro) FROM logs_atenciones WHERE rut_paciente = r.rut) as ultima_cita
+        FROM registros_usuarios r
+        WHERE 1=1
+    """
+    params = []
+    if sede and sede != 'todas':
+        query += " AND r.sede = %s"
+        params.append(sede)
+        
+    query += " ORDER BY r.sede, r.nombre_completo ASC"
+    
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Sede', 'Paciente (Anon.)', 'Sesiones Consumidas', 'Última Cita Registrada'])
+    
+    for row in rows:
+        fecha_str = row['ultima_cita'].strftime('%Y-%m-%d') if row['ultima_cita'] else 'Sin atenciones'
+        writer.writerow([
+            row['sede'],
+            row['paciente_anonimo'],
+            row['sesiones_ocupadas'],
+            fecha_str
+        ])
+        
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=padron_pacientes.csv"}
+    )
+
+@api_router.get("/api/reportes/exportar/especialistas", tags=["Reportes"], summary="Exportar rendimiento médico a CSV")
+def exportar_especialistas_csv(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    sede: str | None = None,
+    profesional: str | None = None,
+    conn=Depends(get_db)
+):
+    query = """
+        SELECT 
+            l.nombre_especialista,
+            r.sede,
+            COUNT(*) as total_atenciones,
+            COUNT(DISTINCT l.rut_paciente) as pacientes_unicos
+        FROM logs_atenciones l
+        JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        WHERE 1=1
+    """
+    params = []
+    if start_date:
+        query += " AND l.fecha_registro >= %s::date"
+        params.append(start_date)
+    if end_date:
+        query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+        params.append(end_date)
+    if sede and sede != 'todas':
+        query += " AND r.sede = %s"
+        params.append(sede)
+    if profesional and profesional != 'todos':
+        query += " AND l.nombre_especialista ILIKE %s"
+        params.append(f"%{profesional}%")
+        
+    query += " GROUP BY l.nombre_especialista, r.sede ORDER BY total_atenciones DESC"
+    
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, tuple(params))
+        rows = cur.fetchall()
+        
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Especialista', 'Sede Principal', 'Total Citas Atendidas', 'Pacientes Únicos Atendidos'])
+    
+    for row in rows:
+        writer.writerow([
+            row['nombre_especialista'],
+            row['sede'],
+            row['total_atenciones'],
+            row['pacientes_unicos']
+        ])
+        
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=rendimiento_medico.csv"}
+    )
+
+@api_router.get("/api/reportes/exportar/motivos", tags=["Reportes"], summary="Exportar motivos de consulta a CSV")
+def exportar_motivos_csv(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    sede: str | None = None,
+    profesional: str | None = None,
+    conn=Depends(get_db)
+):
+    query = """
+        SELECT 
+            COALESCE(l.motivo_consulta, 'Sin Motivo / No Especificado') as motivo,
+            COUNT(*) as total_casos,
+            ROUND(COUNT(*) * 100.0 / NULLIF((SELECT COUNT(*) FROM logs_atenciones la JOIN registros_usuarios ru ON la.rut_paciente=ru.rut WHERE 1=1"""
+    
+    params_total = []
+    if start_date:
+        query += " AND la.fecha_registro >= %s::date"
+        params_total.append(start_date)
+    if end_date:
+        query += " AND la.fecha_registro <= %s::date + interval '1 day'"
+        params_total.append(end_date)
+    if sede and sede != 'todas':
+        query += " AND ru.sede = %s"
+        params_total.append(sede)
+    if profesional and profesional != 'todos':
+        query += " AND la.nombre_especialista ILIKE %s"
+        params_total.append(f"%{profesional}%")
+        
+    query += """), 0), 2) as porcentaje
+        FROM logs_atenciones l
+        JOIN registros_usuarios r ON l.rut_paciente = r.rut
+        WHERE 1=1
+    """
+    
+    params = []
+    if start_date:
+        query += " AND l.fecha_registro >= %s::date"
+        params.append(start_date)
+    if end_date:
+        query += " AND l.fecha_registro <= %s::date + interval '1 day'"
+        params.append(end_date)
+    if sede and sede != 'todas':
+        query += " AND r.sede = %s"
+        params.append(sede)
+    if profesional and profesional != 'todos':
+        query += " AND l.nombre_especialista ILIKE %s"
+        params.append(f"%{profesional}%")
+        
+    query += " GROUP BY l.motivo_consulta ORDER BY total_casos DESC"
+    
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute(query, tuple(params_total + params))
+        rows = cur.fetchall()
+        
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['Motivo de Consulta Clínico', 'Cantidad de Casos', 'Incidencia (%)'])
+    
+    for row in rows:
+        writer.writerow([
+            row['motivo'],
+            row['total_casos'],
+            f"{row['porcentaje']}%" if row['porcentaje'] is not None else "0%"
+        ])
+        
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=distribucion_motivos.csv"}
+    )
+
 
 class PacienteCreate(BaseModel):
     rut: str
