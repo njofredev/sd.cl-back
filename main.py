@@ -871,7 +871,7 @@ def get_reporte_preview(
             query += " AND la.nombre_especialista ILIKE %s"
             params_total.append(f"%{profesional}%")
             
-        query += """), 0), 2) as "Incidencia (%)"
+        query += """), 0), 2)::float as "Incidencia (%)"
             FROM logs_atenciones l
             JOIN registros_usuarios r ON l.rut_paciente = r.rut
             WHERE 1=1
