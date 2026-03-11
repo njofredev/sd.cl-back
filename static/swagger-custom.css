@@ -1,0 +1,63 @@
+@import url("https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css");
+
+/* SANAD API Custom Swagger UI Styles */
+
+/* Topbar Background */
+.swagger-ui .topbar {
+    background-color: #1a1a1a;
+    padding: 15px 0;
+}
+
+/* Hide default logo image */
+.swagger-ui .topbar .link img {
+    display: none;
+}
+
+/* Inject Custom Logo Text */
+.swagger-ui .topbar .link::after {
+    content: "🛡️ SANAD API";
+    color: #49cc90;
+    font-size: 1.5rem;
+    font-weight: bold;
+    font-family: sans-serif;
+    margin-left: 10px;
+}
+
+/* Authorize Button */
+.swagger-ui .btn.authorize {
+    background-color: #49cc90;
+    color: white;
+    border-color: #49cc90;
+    font-family: sans-serif;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.swagger-ui .btn.authorize svg {
+    fill: white;
+}
+
+/* Authorized state */
+.swagger-ui .btn.authorize.unlocked {
+    background-color: transparent;
+    color: #49cc90;
+}
+
+.swagger-ui .btn.authorize.unlocked svg {
+    fill: #49cc90;
+}
+
+/* Authorization Modal */
+.swagger-ui .dialog-ux .modal-ux-header {
+    background-color: #1a1a1a;
+}
+.swagger-ui .dialog-ux .modal-ux-header h3 {
+    color: white;
+}
+.swagger-ui .dialog-ux .modal-ux-content h4 {
+    color: #1a1a1a;
+}
+
+/* Adjust Info section */
+.swagger-ui .info .title {
+    color: #1a1a1a;
+}
