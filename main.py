@@ -131,11 +131,11 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
 # --- 4. ESQUEMAS (PYDANTIC) ---
 class LoginPacienteRequest(BaseModel):
-    rut: str = Field(..., title="RUT del Paciente", description="El RUT debe enviarse con dígito verificador y guión, sin puntos.", example="18765432-1")
+    rut: str = Field(..., title="RUT del Paciente", description="El RUT debe enviarse con dígito verificador y guión, sin puntos.", json_schema_extra={"example": "18765432-1"})
 
 class LoginInstitucionRequest(BaseModel):
-    email: str = Field(..., title="Correo electrónico", example="admin@sanad.cl")
-    password: str = Field(..., title="Contraseña", example="admin123")
+    email: str = Field(..., title="Correo electrónico", json_schema_extra={"example": "admin@sanad.cl"})
+    password: str = Field(..., title="Contraseña", json_schema_extra={"example": "admin123"})
     rut_institucion: str | None = Field(None, title="RUT Institución")
 
 class AgendarRequest(BaseModel):
