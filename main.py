@@ -98,10 +98,11 @@ api_router = APIRouter(dependencies=[Depends(get_api_key)])
 # --- CONFIGURACIÓN CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # En producción reemplazar con dominios reales
+    allow_origins=["*"], 
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # --- 2. CONEXIÓN A BASE DE DATOS ---
