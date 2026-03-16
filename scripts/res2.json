@@ -1,0 +1,8 @@
+{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+  "title": "Par\u00e1metro inv\u00e1lido",
+  "status": 400,
+  "detail": "Fecha FROM inv\u00e1lida",
+  "instance": "0HNJUTLC4T6D1:00000001",
+  "traceId": "00-28a4fc310a5932a4582bc58a58fdddc0-f109159aba8e1e67-01"
+}

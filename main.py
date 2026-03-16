@@ -3,6 +3,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.security.api_key import APIKeyHeader, APIKey
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import psycopg2
@@ -41,6 +42,18 @@ async def get_api_key(api_key: str = Security(api_key_header)):
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or missing X-ApiKey",
     )
+
+security_bearer = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security_bearer)):
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 SACMED_API_KEY = os.getenv("SACMED_API_KEY")
 SACMED_BASE_URL = "https://availability-ms-prod-860551794565.southamerica-west1.run.app"
@@ -95,8 +108,11 @@ async def custom_swagger_ui_html():
         swagger_css_url="/static/swagger-custom.css",
     )
 
-# APIRouter protegido para todas las rutas que empiecen con /api
-api_router = APIRouter(dependencies=[Depends(get_api_key)])
+# APIRouter público (sin autenticación)
+public_router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
+
+# APIRouter protegido para evitar solapamiento con rutas públicas (requiere JWT)
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
 
 # --- CONFIGURACIÓN CORS ---
 app.add_middleware(
@@ -192,19 +208,20 @@ def health_check():
     
     return {"status": "ok", "database": db_status, "timestamp": datetime.now().isoformat()}
 
-@api_router.post("/api/auth/login-paciente", response_model=TokenResponse, tags=["Autenticación"], summary="Login de Pacientes")
+@public_router.post("/login-paciente", response_model=TokenResponse, summary="Login de Pacientes")
 def login_paciente(req: LoginPacienteRequest, conn = Depends(get_db)):
     """
     Inicia sesión para un paciente. 
     Verifica que el RUT exista en la BD y que no haya superado su límite de sesiones.
     Retorna un token JWT y los datos del paciente.
     """
-    rut_clean = req.rut.replace(".", "").strip().upper()
+    # Limpiar y formatear RUT (para que coincida con el formato XXXXXXXX-X de la BD)
+    raw_rut = req.rut.replace(".", "").replace("-", "").strip().upper()
+    rut_clean = f"{raw_rut[:-1]}-{raw_rut[-1]}" if len(raw_rut) >= 2 else raw_rut
     
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("SELECT rut, nombre_completo, email, sede, reservas_realizadas FROM registros_usuarios WHERE rut = %s", (rut_clean,))
         paciente = cur.fetchone()
-        
     if not paciente:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RUT no encontrado en los registros.")
         
@@ -223,10 +240,10 @@ def login_paciente(req: LoginPacienteRequest, conn = Depends(get_db)):
         "paciente": paciente
     }
 
-@api_router.get("/api/pacientes/{rut}/historial", tags=["Pacientes"], summary="Historial de Atenciones")
+@api_router.get("/pacientes/{rut}/historial", tags=["Pacientes"], summary="Historial de Atenciones")
 def get_historial(rut: str, conn = Depends(get_db)):
-    """Obtiene el historial clínico/atenciones pasadas de un paciente específico."""
-    rut_clean = rut.replace(".", "").strip().upper()
+    raw_rut = rut.replace(".", "").replace("-", "").strip().upper()
+    rut_clean = f"{raw_rut[:-1]}-{raw_rut[-1]}" if len(raw_rut) >= 2 else raw_rut
     
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
@@ -239,7 +256,7 @@ def get_historial(rut: str, conn = Depends(get_db)):
         
     return {"historial": historial, "total": len(historial)}
 
-@api_router.get("/api/profesionales", tags=["General"], response_model=list[ProfesionalResponse])
+@api_router.get("/profesionales", tags=["General"], response_model=list[ProfesionalResponse])
 def get_profesionales(
     search: str | None = None,
     genero: str | None = None,
@@ -279,10 +296,10 @@ def get_profesionales(
         
     return profesionales
 
-@api_router.post("/api/pacientes/{rut}/agendar", tags=["Pacientes"], summary="Agendar nueva sesión")
+@api_router.post("/pacientes/{rut}/agendar", tags=["Pacientes"], summary="Agendar nueva sesión")
 def agendar_sesion(rut: str, req: AgendarRequest, conn = Depends(get_db)):
     """Permite al paciente agendar una cita, respetando su límite máximo de 4 sesiones."""
-    rut_clean = rut.replace(".", "").strip().upper()
+    rut_clean = rut.replace(".", "").replace("-", "").strip().upper()
     
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         # Obtener nombre del profesional
@@ -330,7 +347,7 @@ def agendar_sesion(rut: str, req: AgendarRequest, conn = Depends(get_db)):
             conn.rollback()
             raise HTTPException(status_code=500, detail=str(e))
 
-@api_router.post("/api/auth/login-institucion", response_model=TokenResponse, tags=["Autenticación"], summary="Login Institucional y Clínicos")
+@public_router.post("/login-institucion", response_model=TokenResponse, summary="Login Institucional y Clínicos")
 def login_institucion(req: LoginInstitucionRequest, conn = Depends(get_db)):
     """Inicia sesión para administradores y clínicos."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -357,7 +374,7 @@ def login_institucion(req: LoginInstitucionRequest, conn = Depends(get_db)):
         "usuario": usuario
     }
 
-@api_router.get("/api/dashboard/kpis", tags=["Dashboard"], summary="Métricas principales (KPIs)")
+@api_router.get("/dashboard/kpis", tags=["Dashboard"], summary="Métricas principales (KPIs)")
 def get_dashboard_kpis(sede: str | None = None, conn = Depends(get_db)):
     """Obtiene los KPIs y datos de gráficos para el dashboard."""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -470,7 +487,7 @@ def get_dashboard_kpis(sede: str | None = None, conn = Depends(get_db)):
         "citas_recientes": citas_recientes
     }
 
-@api_router.get("/api/dashboard/pacientes", tags=["Dashboard"], summary="Lista de Pacientes activos")
+@api_router.get("/dashboard/pacientes", tags=["Dashboard"], summary="Lista de Pacientes activos")
 def get_dashboard_pacientes(sede: str | None = None, conn = Depends(get_db)):
     """Devuelve la lista de pacientes registrados."""
     query = """
@@ -497,7 +514,7 @@ def get_dashboard_pacientes(sede: str | None = None, conn = Depends(get_db)):
 
 # --- REPORTES Y ESTADÍSTICAS ---
 
-@api_router.get("/api/reportes/resumen", tags=["Reportes"], summary="Resumen analítico filtrado")
+@api_router.get("/reportes/resumen", tags=["Reportes"], summary="Resumen analítico filtrado")
 def get_reportes_resumen(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -536,7 +553,7 @@ def get_reportes_resumen(
         
     return resumen or {}
 
-@api_router.get("/api/reportes/exportar/atenciones", tags=["Reportes"], summary="Exportar atenciones a CSV")
+@api_router.get("/reportes/exportar/atenciones", tags=["Reportes"], summary="Exportar atenciones a CSV")
 def exportar_atenciones_csv(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -598,7 +615,7 @@ def exportar_atenciones_csv(
         headers={"Content-Disposition": f"attachment; filename=reporte_atenciones.csv"}
     )
 
-@api_router.get("/api/reportes/exportar/pacientes", tags=["Reportes"], summary="Exportar padrón de pacientes a CSV")
+@api_router.get("/reportes/exportar/pacientes", tags=["Reportes"], summary="Exportar padrón de pacientes a CSV")
 def exportar_pacientes_csv(
     sede: str | None = None,
     conn=Depends(get_db)
@@ -643,7 +660,7 @@ def exportar_pacientes_csv(
         headers={"Content-Disposition": f"attachment; filename=padron_pacientes.csv"}
     )
 
-@api_router.get("/api/reportes/exportar/especialistas", tags=["Reportes"], summary="Exportar rendimiento médico a CSV")
+@api_router.get("/reportes/exportar/especialistas", tags=["Reportes"], summary="Exportar rendimiento médico a CSV")
 def exportar_especialistas_csv(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -700,7 +717,7 @@ def exportar_especialistas_csv(
         headers={"Content-Disposition": f"attachment; filename=rendimiento_medico.csv"}
     )
 
-@api_router.get("/api/reportes/exportar/motivos", tags=["Reportes"], summary="Exportar motivos de consulta a CSV")
+@api_router.get("/reportes/exportar/motivos", tags=["Reportes"], summary="Exportar motivos de consulta a CSV")
 def exportar_motivos_csv(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -772,7 +789,7 @@ def exportar_motivos_csv(
         headers={"Content-Disposition": f"attachment; filename=distribucion_motivos.csv"}
     )
 
-@api_router.get("/api/reportes/preview/{tipo_reporte}", tags=["Reportes"], summary="Vista previa JSON de reportes")
+@api_router.get("/reportes/preview/{tipo_reporte}", tags=["Reportes"], summary="Vista previa JSON de reportes")
 def get_reporte_preview(
     tipo_reporte: str,
     start_date: str | None = None,
@@ -928,7 +945,7 @@ class PacienteCreate(BaseModel):
     nombre_completo: str
     sede: str
 
-@api_router.post("/api/admin/pacientes", tags=["Admin"], summary="Añadir nuevo paciente")
+@api_router.post("/admin/pacientes", tags=["Admin"], summary="Añadir nuevo paciente")
 def create_paciente(paciente: PacienteCreate, conn = Depends(get_db)):
     """Añade un nuevo paciente."""
     rut_clean = paciente.rut.replace(".", "").strip().upper()
@@ -944,7 +961,7 @@ def create_paciente(paciente: PacienteCreate, conn = Depends(get_db)):
             conn.rollback()
             raise HTTPException(status_code=400, detail=str(e))
 
-@api_router.delete("/api/admin/pacientes/{rut}", tags=["Admin"], summary="Eliminar paciente")
+@api_router.delete("/admin/pacientes/{rut}", tags=["Admin"], summary="Eliminar paciente")
 def delete_paciente(rut: str, conn = Depends(get_db)):
     """Elimina un paciente por su RUT."""
     with conn.cursor() as cur:
@@ -962,14 +979,14 @@ def delete_paciente(rut: str, conn = Depends(get_db)):
             raise HTTPException(status_code=500, detail=str(e))
 
 
-@api_router.get("/api/instituciones", tags=["Instituciones"], summary="Obtener Instituciones (WIP)")
+@api_router.get("/instituciones", tags=["Instituciones"], summary="Obtener Instituciones (WIP)")
 def get_instituciones():
     """(En Desarrollo) Retornará la lista de instituciones afiliadas a SANAD."""
     return [
         {"id": 1, "nombre": "Universidad Andina", "estado": "activa"},
         {"id": 2, "nombre": "Instituto de Salud", "estado": "inactiva"}
     ]
-@api_router.get("/api/admin/sacmed/data", tags=["Admin"], summary="Proxy para obtener datos de SACMED")
+@api_router.get("/admin/sacmed/data", tags=["Admin"], summary="Proxy para obtener datos de SACMED")
 def get_sacmed_data():
     """Actúa como proxy para la API de SACMED (solo admin_sistema)."""
     if not SACMED_API_KEY:
@@ -1002,7 +1019,7 @@ def get_sacmed_data():
         raise HTTPException(status_code=500, detail="Error de conexión con SACMED")
 
 
-@api_router.get("/api/admin/sacmed/events/practitioner/{identification}/{from_date}/{to_date}", tags=["Admin"])
+@api_router.get("/admin/sacmed/events/practitioner/{identification}/{from_date}/{to_date}", tags=["Admin"])
 def get_sacmed_events_practitioner(identification: str, from_date: str, to_date: str):
     """Obtiene eventos de SACMED por especialista y rango de fechas."""
     if not SACMED_API_KEY:
@@ -1018,7 +1035,7 @@ def get_sacmed_events_practitioner(identification: str, from_date: str, to_date:
         print(f"Error calling SACMED Events API: {e}")
         raise HTTPException(status_code=500, detail="Error de conexión con SACMED")
 
-@api_router.get("/api/admin/sacmed/events/patient/{identification}", tags=["Admin"])
+@api_router.get("/admin/sacmed/events/patient/{identification}", tags=["Admin"])
 def get_sacmed_events_patient(identification: str):
     """Obtiene eventos de SACMED por paciente (RUT)."""
     if not SACMED_API_KEY:
@@ -1036,4 +1053,5 @@ def get_sacmed_events_patient(identification: str):
 
 
 # --- INCORPORAR ROUTER ---
+app.include_router(public_router)
 app.include_router(api_router)

@@ -207,10 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 # Custom scripts and temporary files not for production
-init_db.py
-refactor_main.py
-reset_db.py
-res1.json
-res2.json
-swagger.json
-test.py
+# (Scripts moved to /scripts/ are now tracked unless explicitly ignored)

@@ -1,0 +1,212 @@
+[
+  {
+    "eventId": 5738619,
+    "start": "2026-03-11T19:00:00",
+    "end": "2026-03-11T20:00:00",
+    "statusEventId": 2,
+    "statusEvent": "Confirmado",
+    "statusPaidId": null,
+    "statusPaid": "No Facturada",
+    "patient": {
+      "identification": "202398820",
+      "firstName": "Alejandro Ignacio",
+      "paternalLastName": "Iv\u00e1novich",
+      "maternalLastName": "Diaz",
+      "nationalityId": null,
+      "nationality": null,
+      "phone": null,
+      "mobilePhone": "+56962891173",
+      "email": "ivanovichdiaz.alejandro@gmail.com",
+      "healthInsurance": null,
+      "birthDay": null,
+      "addressDTO": null
+    },
+    "practitioner": {
+      "identification": "20.469.428-1",
+      "firstName": "Luna",
+      "lastName": "Jara de Barca",
+      "email": "lunajaradebarca@gmail.com"
+    },
+    "tipoServicio": "Telemedicina",
+    "joinLink": {
+      "link": "https://beta-sacmed.novacaribe.com/Meet/4de9a29e-X2EY",
+      "password": null,
+      "text": "Cuando sea la fecha y hora indicadas, puede ingresar a la teleconsulta haciendo clic en el siguiente link y siga las instrucciones"
+    }
+  },
+  {
+    "eventId": 5738640,
+    "start": "2026-03-11T14:00:00",
+    "end": "2026-03-11T15:00:00",
+    "statusEventId": 1,
+    "statusEvent": "Agendado",
+    "statusPaidId": null,
+    "statusPaid": "No Facturada",
+    "patient": {
+      "identification": "224221193",
+      "firstName": "Sofia Magdalena",
+      "paternalLastName": "Saez",
+      "maternalLastName": "Sanhueza",
+      "nationalityId": null,
+      "nationality": null,
+      "phone": null,
+      "mobilePhone": "+56984514893",
+      "email": "sofiamag.saez@gmail.com",
+      "healthInsurance": null,
+      "birthDay": null,
+      "addressDTO": null
+    },
+    "practitioner": {
+      "identification": "20.469.428-1",
+      "firstName": "Luna",
+      "lastName": "Jara de Barca",
+      "email": "lunajaradebarca@gmail.com"
+    },
+    "tipoServicio": "Telemedicina",
+    "joinLink": {
+      "link": "https://beta-sacmed.novacaribe.com/Meet/8c8542ce-s2EY",
+      "password": null,
+      "text": "Cuando sea la fecha y hora indicadas, puede ingresar a la teleconsulta haciendo clic en el siguiente link y siga las instrucciones"
+    }
+  },
+  {
+    "eventId": 5738645,
+    "start": "2026-03-11T15:00:00",
+    "end": "2026-03-11T16:00:00",
+    "statusEventId": 1,
+    "statusEvent": "Agendado",
+    "statusPaidId": null,
+    "statusPaid": "No Facturada",
+    "patient": {
+      "identification": "261294982",
+      "firstName": "Fernando Carlos",
+      "paternalLastName": "Brocca",
+      "maternalLastName": "Sellaro",
+      "nationalityId": null,
+      "nationality": null,
+      "phone": null,
+      "mobilePhone": "954114019",
+      "email": "ferbrocca17975@hotmail.com",
+      "healthInsurance": null,
+      "birthDay": null,
+      "addressDTO": null
+    },
+    "practitioner": {
+      "identification": "20.469.428-1",
+      "firstName": "Luna",
+      "lastName": "Jara de Barca",
+      "email": "lunajaradebarca@gmail.com"
+    },
+    "tipoServicio": "Telemedicina",
+    "joinLink": {
+      "link": "https://beta-sacmed.novacaribe.com/Meet/b406ac14-x2EY",
+      "password": null,
+      "text": "Cuando sea la fecha y hora indicadas, puede ingresar a la teleconsulta haciendo clic en el siguiente link y siga las instrucciones"
+    }
+  },
+  {
+    "eventId": 5738648,
+    "start": "2026-03-11T16:00:00",
+    "end": "2026-03-11T17:00:00",
+    "statusEventId": 2,
+    "statusEvent": "Confirmado",
+    "statusPaidId": null,
+    "statusPaid": "No Facturada",
+    "patient": {
+      "identification": "239549810",
+      "firstName": "Antonieta Isidora Valentina",
+      "paternalLastName": "Olivas",
+      "maternalLastName": "Figueroa",
+      "nationalityId": null,
+      "nationality": null,
+      "phone": null,
+      "mobilePhone": "942253401",
+      "email": "nickii.figueroa@gmail.com",
+      "healthInsurance": null,
+      "birthDay": null,
+      "addressDTO": null
+    },
+    "practitioner": {
+      "identification": "20.469.428-1",
+      "firstName": "Luna",
+      "lastName": "Jara de Barca",
+      "email": "lunajaradebarca@gmail.com"
+    },
+    "tipoServicio": "Telemedicina",
+    "joinLink": {
+      "link": "https://beta-sacmed.novacaribe.com/Meet/8098e125-02EY",
+      "password": null,
+      "text": "Cuando sea la fecha y hora indicadas, puede ingresar a la teleconsulta haciendo clic en el siguiente link y siga las instrucciones"
+    }
+  },
+  {
+    "eventId": 5738657,
+    "start": "2026-03-11T17:00:00",
+    "end": "2026-03-11T18:00:00",
+    "statusEventId": 2,
+    "statusEvent": "Confirmado",
+    "statusPaidId": null,
+    "statusPaid": "No Facturada",
+    "patient": {
+      "identification": "194189397",
+      "firstName": "Francisca Belen",
+      "paternalLastName": "Opazo",
+      "maternalLastName": "Mu\u00f1oz",
+      "nationalityId": null,
+      "nationality": null,
+      "phone": null,
+      "mobilePhone": "974252277",
+      "email": "fcaopazo.m@gmail.com",
+      "healthInsurance": null,
+      "birthDay": null,
+      "addressDTO": null
+    },
+    "practitioner": {
+      "identification": "20.469.428-1",
+      "firstName": "Luna",
+      "lastName": "Jara de Barca",
+      "email": "lunajaradebarca@gmail.com"
+    },
+    "tipoServicio": "Telemedicina",
+    "joinLink": {
+      "link": "https://beta-sacmed.novacaribe.com/Meet/55359029-92EY",
+      "password": null,
+      "text": "Cuando sea la fecha y hora indicadas, puede ingresar a la teleconsulta haciendo clic en el siguiente link y siga las instrucciones"
+    }
+  },
+  {
+    "eventId": 5738665,
+    "start": "2026-03-11T18:00:00",
+    "end": "2026-03-11T19:00:00",
+    "statusEventId": 1,
+    "statusEvent": "Agendado",
+    "statusPaidId": null,
+    "statusPaid": "No Facturada",
+    "patient": {
+      "identification": "151739482",
+      "firstName": "Claudia Liliana",
+      "paternalLastName": "Varela",
+      "maternalLastName": "Figueroa",
+      "nationalityId": null,
+      "nationality": null,
+      "phone": null,
+      "mobilePhone": "982004346",
+      "email": "cvarela2402@gmail.com",
+      "healthInsurance": null,
+      "birthDay": null,
+      "addressDTO": null
+    },
+    "practitioner": {
+      "identification": "20.469.428-1",
+      "firstName": "Luna",
+      "lastName": "Jara de Barca",
+      "email": "lunajaradebarca@gmail.com"
+    },
+    "tipoServicio": "Telemedicina",
+    "joinLink": {
+      "link": "https://beta-sacmed.novacaribe.com/Meet/60c19b82-H3EY",
+      "password": null,
+      "text": "Cuando sea la fecha y hora indicadas, puede ingresar a la teleconsulta haciendo clic en el siguiente link y siga las instrucciones"
+    }
+  }
+]
