@@ -33,19 +33,23 @@ API_KEY_NAME = "X-ApiKey"
 API_KEY_VALUE = os.getenv("SANAD_API_KEY")
 if not API_KEY_VALUE:
     raise ValueError("Missing SANAD_API_KEY environment variable. Cannot start server securely.")
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 async def get_api_key(api_key: str = Security(api_key_header)):
+    if not api_key:
+        return None
     if api_key == API_KEY_VALUE:
         return api_key
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or missing X-ApiKey",
+        detail="Invalid X-ApiKey",
     )
 
-security_bearer = HTTPBearer()
+security_bearer = HTTPBearer(auto_error=False)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security_bearer)):
+    if not credentials:
+        return None
     token = credentials.credentials
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -54,6 +58,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+async def get_authenticated_user(
+    api_key: str = Depends(get_api_key),
+    jwt_payload: dict = Depends(get_current_user)
+):
+    """
+    Dependency that allows access via either a valid JWT or a valid X-ApiKey.
+    Returns the JWT payload if present, otherwise returns a mock payload for API Key access.
+    """
+    if jwt_payload:
+        return jwt_payload
+    if api_key:
+        # Return a generic payload for API Key access
+        return {"sub": "api_key_user", "rol": "admin", "api_key_access": True}
+    
+    raise HTTPException(
+        status_code=401,
+        detail="Not authenticated. Provide a valid JWT token (Authorization: Bearer <token>) or X-ApiKey header."
+    )
 
 SACMED_API_KEY = os.getenv("SACMED_API_KEY")
 SACMED_BASE_URL = "https://availability-ms-prod-860551794565.southamerica-west1.run.app"
@@ -108,11 +131,11 @@ async def custom_swagger_ui_html():
         swagger_css_url="/static/swagger-custom.css",
     )
 
-# APIRouter público (sin autenticación)
+# APIRouter público (sin autenticación requerida, pero valida API Key si se provee)
 public_router = APIRouter(prefix="/api/auth", tags=["Autenticación"])
 
-# APIRouter protegido para evitar solapamiento con rutas públicas (requiere JWT)
-api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_current_user)])
+# APIRouter protegido (Acepta JWT o X-ApiKey)
+api_router = APIRouter(prefix="/api/v1", dependencies=[Depends(get_authenticated_user)])
 
 # --- CONFIGURACIÓN CORS ---
 app.add_middleware(
@@ -198,10 +221,10 @@ def read_root():
 @app.get("/health", tags=["General"], summary="Health Check Detallado")
 def health_check():
     """Verifica el estado de los servicios internos (ej. Base de datos)."""
-    # Aquí podríamos agregar un test de BD
+    if db_pool is None:
+        return {"status": "ok", "database": "initializing", "timestamp": datetime.now().isoformat()}
     try:
         conn = next(get_db())
-        conn.close()
         db_status = "connected"
     except Exception:
         db_status = "disconnected"
